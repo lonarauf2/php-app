@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: my-app-container
-        image: 296062588319.dkr.ecr.us-east-1.amazonaws.com/appoostocrm:latest
+        image: 182399693663.dkr.ecr.us-east-1.amazonaws.com/php-app:latest
         ports:
         - containerPort: 80
         env:
