@@ -1,0 +1,6 @@
+.DS_Store
+.idea/
+Terraform/terraform.tfstate
+Terraform/terraform.tfstate.backup
+Terraform/.terraform.*
+Terraform/.terraform/*

@@ -1,0 +1,97 @@
+name: Build and Push Docker Image to ECR and EKS
+
+on:
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch:
+
+jobs:
+  build-push-image:
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY_URI: ${{ secrets.REPOSITORY_URI }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Log in to Amazon ECR
+        uses: jwalton/gh-ecr-login@v3.0.1
+        with:
+          region: ${{ secrets.AWS_REGION }}
+          access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          secret-access-key: ${{ secrets.AWS_SECRET }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.REPOSITORY_URI }}:${{ github.sha }}
+            ${{ secrets.REPOSITORY_URI }}:latest
+
+  deploy-sqlScript-rds:
+    runs-on: ubuntu-latest
+    needs: build-push-image
+    steps:
+      - name: Set up MySQL client
+        run: |
+          sudo apt-get update && sudo apt upgrade -y
+          sudo apt-get install -y mysql-client
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Cache Deployment Flag
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: deployment-flag.txt
+          key: rds-deployment-${{ github.sha }}
+
+      - name: Check Deployment Status
+        working-directory: assets
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Deployment not yet performed. Proceeding with deployment."
+          echo "deployed" > deployment-flag.txt
+          # Run the deployment
+          mysql -h ${{ secrets.RDS_ENDPOINT }} -u ${{ secrets.RDS_USERNAME }} -p${{ secrets.RDS_PASSWORD }} ${{ secrets.DATABASE_NAME }} < db-load-script.sql || echo "Error during deployment"
+
+      - name: Skip Deployment
+        if: steps.cache.outputs.cache-hit == 'true'
+        run: echo "Deployment already completed. Skipping."
+
+  deploy-to-eks:
+    runs-on: ubuntu-latest
+    needs: deploy-sqlScript-rds
+    env:
+      RELEASE_NAME: preprod
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Kubectl tool installer
+        uses: Azure/setup-kubectl@v4.0.0
+        id: install
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Deploy kube manifests
+        working-directory: kube-manifests
+        run: |
+          if ! kubectl get namespace php >/dev/null 2>&1; then
+            kubectl create namespace php
+          fi
+          kubectl apply -f .
