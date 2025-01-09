@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - iac
-    paths:
-      - 'Terraform/**' # Trigger on push events to 'iac' branch and changes within 'Terraform' folder
+
   pull_request:
     branches:
       - iac
-    paths:
-      - 'Terraform/**' # Trigger on pull request events targeting 'iac' branch and changes within 'Terraform' folder
+  
   # workflow_dispatch:
 
   
