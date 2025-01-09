@@ -16,6 +16,10 @@ resource "aws_s3_bucket" "bucket" {
   tags = {
     Name = "S3 Remote Terraform State Store"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
  
 }
 
@@ -30,6 +34,10 @@ resource "aws_dynamodb_table" "terraform-lock" {
   }
   tags = {
     "Name" = "DynamoDB Terraform State Lock Table"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 
 }
