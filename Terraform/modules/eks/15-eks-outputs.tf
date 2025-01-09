@@ -64,3 +64,6 @@ output "node_group_public_version" {
   value       = aws_eks_node_group.eks_ng_public.version
 }
 
+output "rds_endpoint" {
+  value = aws_db_instance.mydb.endpoint
+}

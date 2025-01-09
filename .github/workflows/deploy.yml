@@ -1,75 +1,25 @@
-name: Build and Push Docker Image to ECR and EKS
+name: Deploy AWS Infrastructure
 
 on:
   # push:
   #   branches:
-  #     - main
+  #     - iac
+  #   paths:
+  #     - 'Terraform/**' # Trigger on push events to 'iac' branch and changes within 'Terraform' folder
+  # pull_request:
+  #   branches:
+  #     - iac
+  #   paths:
+  #     - 'Terraform/**' # Trigger on pull request events targeting 'iac' branch and changes within 'Terraform' folder
   workflow_dispatch:
 
+  
+
 jobs:
-  build-push-image:
+  DeployTerraform:
     runs-on: ubuntu-latest
-    env:
-      REPOSITORY_URI: ${{ secrets.REPOSITORY_URI }}
-      IMAGE_TAG: ${{ github.sha }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
 
-      - name: Log in to Amazon ECR
-        uses: jwalton/gh-ecr-login@v3.0.1
-        with:
-          region: ${{ secrets.AWS_REGION }}
-          access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-          secret-access-key: ${{ secrets.AWS_SECRET }}
-
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.REPOSITORY_URI }}:${{ github.sha }}
-            ${{ secrets.REPOSITORY_URI }}:latest
-
-  deploy-sqlScript-rds:
-    runs-on: ubuntu-latest
-    needs: build-push-image
-    steps:
-      - name: Set up MySQL client
-        run: |
-          sudo apt-get update && sudo apt upgrade -y
-          sudo apt-get install -y mysql-client
-
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Cache Deployment Flag
-        id: cache
-        uses: actions/cache@v3
-        with:
-          path: deployment-flag.txt
-          key: rds-deployment-${{ github.sha }}
-
-      - name: Check Deployment Status
-        working-directory: assets
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          echo "Deployment not yet performed. Proceeding with deployment."
-          echo "deployed" > deployment-flag.txt
-          # Run the deployment
-          mysql -h ${{ secrets.RDS_ENDPOINT }} -u ${{ secrets.RDS_USERNAME }} -p${{ secrets.RDS_PASSWORD }} ${{ secrets.DATABASE_NAME }} < db-load-script.sql || echo "Error during deployment"
-
-      - name: Skip Deployment
-        if: steps.cache.outputs.cache-hit == 'true'
-        run: echo "Deployment already completed. Skipping."
-
-  deploy-to-eks:
-    runs-on: ubuntu-latest
-    needs: deploy-sqlScript-rds
-    env:
-      RELEASE_NAME: preprod
-    steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -77,21 +27,90 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Update kubeconfig for EKS
-        run: |
-          aws eks update-kubeconfig --name ${{ secrets.CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
 
-      - name: Kubectl tool installer
-        uses: Azure/setup-kubectl@v4.0.0
-        id: install
+      - name: Terraform fmt
+        id: fmt
+        working-directory: Terraform
+        run: terraform fmt -check
+        continue-on-error: true
 
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Terraform Init
+        id: init
+        working-directory: Terraform
+        run: terraform init
 
-      - name: Deploy kube manifests
-        working-directory: kube-manifests
-        run: |
-          if ! kubectl get namespace php >/dev/null 2>&1; then
-            kubectl create namespace php
-          fi
-          kubectl apply -f .
+      - name: Terraform Validate
+        id: validate
+        working-directory: Terraform
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: Terraform
+        run: terraform plan -no-color
+        continue-on-error: true
+      
+      - name: Terraform Apply
+        id: apply
+        working-directory: Terraform
+        run: terraform apply --auto-approve
+
+      - uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // 1. Retrieve existing bot comments for the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComment = comments.find(comment => {
+              return comment.user.type === 'Bot' && comment.body.includes('Terraform Format and Style');
+            });
+
+            // 2. Prepare format of the comment
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            <details><summary>Validation Output</summary>
+
+            \`\`\`
+            ${{ steps.validate.outputs.stdout }}
+            \`\`\`
+
+            </details>
+
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ env.tf_actions_working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            // 3. If we have a comment, update it, otherwise create a new one
+            if (botComment) {
+              github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: output,
+              });
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: output,
+              });
+            }

@@ -17,12 +17,12 @@ spec:
     spec:
       containers:
       - name: my-app-container
-        image: 296062588319.dkr.ecr.us-east-1.amazonaws.com/appoostocrm:latest
+        image: lona269/php-app:latest
         ports:
         - containerPort: 80
         env:
         - name: DB_HOST
-          value: "ashiqdb.cjswsu62sd4f.us-east-1.rds.amazonaws.com"
+          value: "ashiqdb.c3w8ms64o98h.us-east-1.rds.amazonaws.com"
         - name: DB_USER
           valueFrom:
             secretKeyRef:

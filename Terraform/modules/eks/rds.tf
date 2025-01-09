@@ -1,19 +1,25 @@
+resource "aws_db_subnet_group" "my_db_subnet_group" {
+  name        = "subnet group"
+  description = "My DB Subnet Group"
+  subnet_ids  = module.vpc.public_subnets
+}
+
 resource "aws_db_instance" "mydb" {
-  allocated_storage                 = 20
-  identifier                        = "ashiqdb"
-  storage_type                      = "gp2"
-  engine                            = "mysql"
-  engine_version                    = "8.0.39"
-  instance_class                    = "db.t3.micro"
-  db_name                           = "ashiqdb"
-  username                          = "ashiq"
-  password                          = "ashiqpassword"
+  allocated_storage                   = 20
+  identifier                          = "ashiqdb"
+  storage_type                        = "gp2"
+  engine                              = "mysql"
+  engine_version                      = "8.0.39"
+  instance_class                      = "db.t3.micro"
+  db_name                             = "ashiqdb"
+  username                            = "ashiq"
+  password                            = "ashiqpassword"
   iam_database_authentication_enabled = true
-  parameter_group_name              = "default.mysql8.0"
-  skip_final_snapshot               = true
-  publicly_accessible               = false
-  db_subnet_group_name              = aws_db_subnet_group.my_db_subnet_group.name
-  vpc_security_group_ids            = [aws_security_group.rds_sg.id]
+  parameter_group_name                = "default.mysql8.0"
+  skip_final_snapshot                 = true
+  publicly_accessible                 = true
+  db_subnet_group_name                = aws_db_subnet_group.my_db_subnet_group.name
+  vpc_security_group_ids              = [aws_security_group.rds_sg.id]
   tags = {
     Name = "sqldb"
   }
