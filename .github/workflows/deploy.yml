@@ -50,10 +50,10 @@ jobs:
         run: terraform plan 
         continue-on-error: true
       
-      - name: Terraform Destroy
-        id: destroy
+      - name: Terraform Apply
+        id: apply
         working-directory: Terraform
-        run: terraform destroy --auto-approve
+        run: terraform apply --auto-approve
 
       - uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
