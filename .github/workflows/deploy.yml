@@ -31,7 +31,7 @@ jobs:
       - name: Terraform fmt
         id: fmt
         working-directory: Terraform
-        run: terraform fmt -check
+        run: terraform fmt --recursive
         continue-on-error: true
 
       - name: Terraform Init
@@ -42,12 +42,12 @@ jobs:
       - name: Terraform Validate
         id: validate
         working-directory: Terraform
-        run: terraform validate -no-color
+        run: terraform validate 
 
       - name: Terraform Plan
         id: plan
         working-directory: Terraform
-        run: terraform plan -no-color
+        run: terraform plan 
         continue-on-error: true
       
       - name: Terraform Destroy
